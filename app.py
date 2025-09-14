@@ -50,3 +50,11 @@ with app.app_context():
 @app.route("/")
 def home():
     return "Mezano is connected to Postgres!"
+    from flask import jsonify
+from sqlalchemy import inspect
+
+@app.route("/check_db")
+def check_db():
+    inspector = inspect(db.engine)
+    tables = inspector.get_table_names()
+    return jsonify(tables)
