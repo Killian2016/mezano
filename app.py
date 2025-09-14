@@ -26,3 +26,27 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()   # create tables
     app.run(debug=True)
+    import os
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+
+app = Flask(__name__)
+
+# Database connection from environment variable
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+# Example Model (add your real models here)
+class Customer(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+
+# Create tables when the server starts
+with app.app_context():
+    db.create_all()
+
+@app.route("/")
+def home():
+    return "Mezano is connected to Postgres!"
