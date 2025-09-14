@@ -1,60 +1,70 @@
-from flask import Flask
-from routes import routes
-from models import db
-
-app = Flask(__name__, template_folder="templates")
-
-# Database config
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///mezano.db"
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-# Initialize db WITH this app
-db.init_app(app)
-
-# Register routes
-app.register_blueprint(routes)
-
-@app.route("/")
-def home():
-    return "👷 Welcome to Mezano Construction Accounting App"
-
-@app.route("/hello")
-def hello():
-    return "Hello World!"
-
-if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()   # create tables
-    app.run(debug=True)
-    import os
-from flask import Flask
+import os
+from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect
 
 app = Flask(__name__)
 
-# Database connection from environment variable
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# -----------------------------
+# Database Setup
+# -----------------------------
+# Render gives DATABASE_URL in environment variables
+database_url = os.environ.get("DATABASE_URL")
+
+if not database_url:
+    raise RuntimeError("DATABASE_URL not set. Did you add it in Render?")
+
+# Fix postgres:// -> postgresql:// for SQLAlchemy
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
-# Example Model (add your real models here)
+# -----------------------------
+# Models
+# -----------------------------
 class Customer(db.Model):
+    __tablename__ = "customer"
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
 
-# Create tables when the server starts
-with app.app_context():
-    db.create_all()
+# -----------------------------
+# Routes
+# -----------------------------
 
 @app.route("/")
 def home():
-    return "Mezano is connected to Postgres!"
-    from flask import jsonify
-from sqlalchemy import inspect
+    return "Mezano is running with Postgres ✅"
 
 @app.route("/check_db")
 def check_db():
     inspector = inspect(db.engine)
     tables = inspector.get_table_names()
     return jsonify(tables)
+
+@app.route("/init_db")
+def init_db():
+    # Create tables if they don’t exist
+    db.create_all()
+    return "Database tables created ✅"
+
+@app.route("/add_test_customer")
+def add_customer():
+    new_customer = Customer(name="Test User")
+    db.session.add(new_customer)
+    db.session.commit()
+    return f"Added customer with id {new_customer.id}"
+
+@app.route("/list_customers")
+def list_customers():
+    customers = Customer.query.all()
+    return jsonify([{"id": c.id, "name": c.name} for c in customers])
+
+# -----------------------------
+# Run locally
+# -----------------------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
