@@ -1,18 +1,14 @@
 import os
-from flask import Flask, request, render_template, redirect, url_for
+from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import (
-    LoginManager, login_user, logout_user,
-    login_required, current_user, UserMixin
-)
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import LoginManager
 from sqlalchemy import inspect
 
 # -----------------------------
 # App setup
 # -----------------------------
 app = Flask(__name__)
-app.secret_key = "supersecret"   # change this in production
+app.secret_key = "supersecret"   # change in production
 
 # Database
 database_url = os.environ.get("DATABASE_URL")
@@ -24,29 +20,8 @@ if database_url.startswith("postgres://"):
 
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
 db = SQLAlchemy(app)
-
-# -----------------------------
-# Models
-# -----------------------------
-class Company(db.Model):
-    __tablename__ = "company"
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False)
-    users = db.relationship("User", backref="company", lazy=True)
-
-class User(UserMixin, db.Model):
-    __tablename__ = "user"
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(200), nullable=False)
-    company_id = db.Column(db.Integer, db.ForeignKey("company.id"))
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
 
 # -----------------------------
 # Flask-Login setup
@@ -55,12 +30,18 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
+# -----------------------------
+# Import models + routes
+# -----------------------------
+from models import User, Company
+from routes import *   # 👈 this loads all the route functions
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
 # -----------------------------
-# Routes
+# Utility routes
 # -----------------------------
 @app.route("/")
 def home():
@@ -77,57 +58,6 @@ def init_db():
         db.create_all()
     return "Database tables created ✅"
 
-@app.route("/signup", methods=["GET", "POST"])
-def signup():
-    if request.method == "POST":
-        email = request.form["email"]
-        password = request.form["password"]
-        company_name = request.form["company_name"]
-
-        if User.query.filter_by(email=email).first():
-            return "Email already exists ❌"
-
-        # Create company
-        company = Company(name=company_name)
-        db.session.add(company)
-        db.session.flush()  # get company.id
-
-        # Create user linked to company
-        user = User(email=email, company_id=company.id)
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-
-        login_user(user)  # log in right after signup
-        return redirect(url_for("dashboard"))
-
-    return render_template("signup.html")
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        email = request.form["email"]
-        password = request.form["password"]
-
-        user = User.query.filter_by(email=email).first()
-        if user and user.check_password(password):
-            login_user(user)
-            return redirect(url_for("dashboard"))
-        return "Invalid credentials ❌"
-
-    return render_template("login.html")
-
-@app.route("/logout")
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for("login"))
-
-@app.route("/dashboard")
-@login_required
-def dashboard():
-    return f"Welcome {current_user.email} 🎉 — Company: {current_user.company.name}"
-    
 # -----------------------------
 # Run locally
 # -----------------------------

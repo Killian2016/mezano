@@ -1,106 +1,55 @@
-from flask import Blueprint, render_template, request, redirect, url_for
-from models import db, Customer, Invoice
+from flask import render_template, request, redirect, url_for
+from flask_login import login_user, logout_user, login_required, current_user
+from app import app, db
+from models import User, Company
 
-# 🔑 This line defines the Blueprint so @routes.route works
-routes = Blueprint("routes", __name__)
-
-# ==========================
-# Dashboard
-# ==========================
-@routes.route("/")
-def index():
-    customer_count = Customer.query.count()
-    invoice_count = Invoice.query.count()
-    total_revenue = db.session.query(db.func.sum(Invoice.amount)).scalar() or 0
-
-    # latest 5 invoices
-    recent_invoices = Invoice.query.order_by(Invoice.id.desc()).limit(5).all()
-    customers = {c.id: c.name for c in Customer.query.all()}
-
-    return render_template(
-        "index.html",
-        customer_count=customer_count,
-        invoice_count=invoice_count,
-        total_revenue=total_revenue,
-        recent_invoices=recent_invoices,
-        customers=customers,
-        active_page="dashboard",
-    )
-
-# ==========================
-# Customers
-# ==========================
-@routes.route("/customers")
-def customers_page():
-    customers = Customer.query.all()
-    return render_template("customers.html", customers=customers, active_page="customers")
-
-
-@routes.route("/add_customer", methods=["GET", "POST"])
-def add_customer():
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
     if request.method == "POST":
-        name = request.form.get("name")
-        email = request.form.get("email")
-        phone = request.form.get("phone")
-        address = request.form.get("address")
+        email = request.form["email"]
+        password = request.form["password"]
+        company_name = request.form["company_name"]
 
-        new_customer = Customer(
-            name=name,
-            email=email,
-            phone=phone,
-            address=address
-        )
-        db.session.add(new_customer)
+        if User.query.filter_by(email=email).first():
+            return "Email already exists ❌"
+
+        # Create company
+        company = Company(name=company_name)
+        db.session.add(company)
+        db.session.flush()
+
+        # Create user linked to company
+        user = User(email=email, company_id=company.id)
+        user.set_password(password)
+        db.session.add(user)
         db.session.commit()
 
-        return redirect(url_for("routes.customers_page"))
+        login_user(user)
+        return redirect(url_for("dashboard"))
 
-    return render_template("add_customer.html", active_page="customers")
+    return render_template("signup.html")
 
-# ==========================
-# Invoices
-# ==========================
-@routes.route("/invoices")
-def invoices_page():
-    invoices = Invoice.query.all()
-    customers = {c.id: c.name for c in Customer.query.all()}
-    return render_template("invoices.html", invoices=invoices, customers=customers, active_page="invoices")
-
-
-@routes.route("/add_invoice", methods=["GET", "POST"])
-def add_invoice():
+@app.route("/login", methods=["GET", "POST"])
+def login():
     if request.method == "POST":
-        customer_id = request.form.get("customer_id")
-        description = request.form.get("description")
-        amount = request.form.get("amount")
-        status = request.form.get("status")
+        email = request.form["email"]
+        password = request.form["password"]
 
-        new_invoice = Invoice(
-            customer_id=customer_id,
-            description=description,
-            amount=float(amount),
-            status=status,
-        )
-        db.session.add(new_invoice)
-        db.session.commit()
+        user = User.query.filter_by(email=email).first()
+        if user and user.check_password(password):
+            login_user(user)
+            return redirect(url_for("dashboard"))
+        return "Invalid credentials ❌"
 
-        return redirect(url_for("routes.invoices_page"))
+    return render_template("login.html")
 
-    customers = Customer.query.all()
-    return render_template("add_invoice.html", customers=customers, active_page="invoices")
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
 
-# ==========================
-# Reports
-# ==========================
-@routes.route("/reports")
-def reports_page():
-    customer_count = Customer.query.count()
-    invoice_count = Invoice.query.count()
-    total_revenue = db.session.query(db.func.sum(Invoice.amount)).scalar() or 0
-    return render_template(
-        "reports.html",
-        customer_count=customer_count,
-        invoice_count=invoice_count,
-        total_revenue=total_revenue,
-        active_page="reports",
-    )
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    return f"Welcome {current_user.email} 🎉 — Company: {current_user.company.name}"
